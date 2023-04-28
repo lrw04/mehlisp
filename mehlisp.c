@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef long double num_t;
 
@@ -30,7 +31,7 @@ struct value_t;
 typedef struct gc_header_t {
     int type;
     size_t size;
-    uint8_t *foward;
+    uint8_t *forward;
 } gc_header_t;
 
 typedef struct number_t {
@@ -147,7 +148,17 @@ void gc_collect(int expand) {
     free(to_space);
 }
 
-uint8_t *gc_copy(uint8_t *o) {}
+uint8_t *gc_copy(uint8_t *o) {
+    ptrdiff_t offset = o - from_space;
+    if (offset < 0 || offset >= memory_size) return o;
+    value_t *p = o;
+    if (p->header.forward) return p->header.forward;
+    value_t *next_loc = alloc_ptr;
+    memcpy(next_loc, p, p->header.size);
+    alloc_ptr += p->header.size;
+    p->header.forward = next_loc;
+    return next_loc;
+}
 
 int main() {
     gc_init();
