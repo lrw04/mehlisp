@@ -85,7 +85,10 @@ void gc_init() {
     alloc_ptr = from_space;
 }
 
+#define GC_ALIGN (sizeof(long))
+
 uint8_t *gc_allocate(size_t size) {
+    size = (size - 1) / GC_ALIGN + 1;
     if (size + alloc_ptr - from_space > memory_size) gc_collect(0);
     if (size + alloc_ptr - from_space > memory_size) gc_collect(1);
     uint8_t *o = alloc_ptr;
