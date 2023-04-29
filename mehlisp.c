@@ -43,7 +43,7 @@ typedef struct cons_t {
 } cons_t;
 
 typedef struct symbol_t {
-    char name;
+    char name[1];
 } symbol_t;
 
 typedef struct primitive_t {
@@ -76,24 +76,38 @@ typedef struct value_t {
     };
 } value_t;
 
+value_t *obarray;
+
+typedef struct root_stack_node_t {
+    uint8_t *p;
+    root_stack_node_t *next;
+} root_stack_node_t;
+
+root_stack_node_t *root_stack_head;
+
 size_t memory_size;
 uint8_t *from_space, *to_space, *alloc_ptr, *scan_ptr;
 
 void gc_init() {
     memory_size = INITIAL_MEMORY;
     from_space = malloc(memory_size);
-    if (!from_space) ERR_EXIT("memory allocation failed");
+    if (!from_space) ERR_EXIT("out of memory");
     alloc_ptr = from_space;
+    root_stack_head = malloc(sizeof(root_stack_node_t));
+    root_stack_head->next = root_stack_head->p = NULL;
 }
 
 #define GC_ALIGN (sizeof(long))
 
 uint8_t *gc_allocate(size_t size) {
     size = (size - 1) / GC_ALIGN + 1;
+    size += offsetof(value_t, number);
+    size = (size - 1) / GC_ALIGN + 1;
     if (size + alloc_ptr - from_space > memory_size) gc_collect(0);
-    if (size + alloc_ptr - from_space > memory_size) gc_collect(1);
+    while (size + alloc_ptr - from_space > memory_size) gc_collect(1);
     uint8_t *o = alloc_ptr;
     alloc_ptr += size;
+    ((value_t *)o)->header.forward = NULL;
     return o;
 }
 
@@ -107,11 +121,11 @@ void swap_u8p(uint8_t **a, uint8_t **b) {
 void gc_collect(int expand) {
     if (expand) memory_size *= 2;
     to_space = malloc(memory_size);
-    if (!to_space) ERR_EXIT("memory allocation failed");
+    if (!to_space) ERR_EXIT("out of memory");
     swap_u8p(&from_space, &to_space);
     alloc_ptr = scan_ptr = from_space;
 
-    // TODO: copy root
+    gc_copy_roots();
 
     while (scan_ptr < alloc_ptr) {
         value_t *o = scan_ptr;
@@ -158,6 +172,67 @@ uint8_t *gc_copy(uint8_t *o) {
     alloc_ptr += p->header.size;
     p->header.forward = next_loc;
     return next_loc;
+}
+
+void gc_copy_roots() {
+    obarray = gc_copy(obarray);
+    for (root_stack_node_t *u = root_stack_head; u; u = u->next) {
+        if (u->p) u->p = gc_copy(u->p);
+    }
+}
+
+void gc_push_root(uint8_t *p) {
+    root_stack_node_t *u = malloc(sizeof(root_stack_node_t));
+    u->next = root_stack_head;
+    u->p = p;
+    root_stack_head = u;
+}
+
+void gc_pop_root() {
+    root_stack_node_t *u = root_stack_head;
+    root_stack_head = u->next;
+    free(u);
+}
+
+value_t *make_number(num_t num) {
+    value_t *p = gc_allocate(sizeof(num_t));
+    p->header.type = T_NUMBER;
+    p->number.value = num;
+    return p;
+}
+
+value_t *make_cons(value_t *car, value_t *cdr) {
+    value_t *p = gc_allocate(sizeof(cons_t));
+    p->header.type = T_CONS;
+    p->cons.car = car;
+    p->cons.cdr = cdr;
+    return p;
+}
+
+value_t *make_symbol(const char *name) {
+    value_t *p = gc_allocate(strlen(name) + 1);
+    p->header.type = T_SYMBOL;
+    strcpy(p->symbol.name, name);
+    return p;
+}
+
+value_t *intern(const char *name) {
+    for (value_t *u = obarray; u; u = u->cons.cdr) {
+        value_t *v = u->cons.car;
+        if (v->header.type != T_SYMBOL) ERR_EXIT("non-symbol in obarray");
+        if (!strcmp(v->symbol.name, name)) {
+            return v;
+        }
+    }
+    obarray = make_cons(make_symbol(name), obarray);
+    return obarray->cons.car;
+}
+
+value_t *make_primitive(value_t *(*func)(value_t *args, value_t *env)) {
+    value_t *p = gc_allocate(sizeof func);
+    p->header.type = T_PRIMITIVE;
+    p->primitive.func = func;
+    return p;
 }
 
 int main() {
