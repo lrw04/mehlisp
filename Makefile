@@ -8,6 +8,6 @@ test: mehlisp test.in test.ans
 	diff test.out test.ans
 
 clean:
-	rm -f test.ans mehlisp
+	rm -f test.out mehlisp
 
 .PHONY: all test clean
