@@ -1,9 +1,12 @@
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <list>
+#include <string>
 #include <vector>
 using ld = long double;
 using ll = long long;
@@ -147,6 +150,13 @@ ll gc_alloc() {
     }
 }
 
+tp make_number(ld n) {
+    tp ret;
+    ret.t = number;
+    ret.n = n;
+    return ret;
+}
+
 tp make_cons(tp car, tp cdr, type t = cons) {
     ll p = gc_alloc();
     cars[p] = car;
@@ -207,9 +217,8 @@ tp env_father(tp e) {
     return cdrs[e.p];
 }
 tp env_lookup(tp e, tp s) {
-    if (to_boolean(eq(e, intern("nil")))) ERR_EXIT("Unbound variable");
-    for (auto cur = env_bindings(e); !to_boolean(eq(e, intern("nil")));
-         cur = cons_cdr(cur)) {
+    if (!to_boolean(e)) ERR_EXIT("Unbound variable");
+    for (auto cur = env_bindings(e); to_boolean(e); cur = cons_cdr(cur)) {
         auto p = cons_car(cur);
         if (to_boolean(eq(cons_car(p), s))) return cur;
     }
@@ -219,4 +228,49 @@ tp env_extend(tp e, tp p) {
     return make_env(make_cons(p, env_bindings(e)), env_father(e));
 }
 
-int main() { gc_init(); }
+tp env_init() {}
+
+tp eval(tp expr, tp e) {}
+
+bool number_str_p(std::string s) {
+    ld _;
+    try {
+        _ = stold(s);
+    } catch (const std::invalid_argument &e) {
+        return false;
+    }
+    return _ * _ >= -0.5;  // Need to find a way to use the value of _
+}
+
+tp read_cdr(std::istream &st);
+
+std::string read_token(std::istream &st) {
+    auto c = st.get();
+    while (isspace(c) && c != EOF) c = st.get();
+    if (c == EOF) return "";
+    std::string s;
+    s += c;
+    if (c == '(' || c == ')') return s;
+    while ((!isspace(c = st.get())) && c != EOF && c != '(' && c != ')') s += c;
+    if (c == '(' || c == ')') st.unget();
+    return s;
+}
+
+tp read(std::istream &st) {}
+
+tp read_cdr(std::istream &st) {}
+
+void print(tp expr, std::ostream &st) {}
+
+int main() {
+    gc_init();
+    auto env = env_init();
+    while (true) {
+        std::cout << "? " << std::flush;
+        auto expr = read(std::cin);
+        if (to_boolean(eq(expr, intern("EOF")))) break;
+        auto res = eval(expr, env);
+        print(res, std::cout);
+        std::cout << std::endl;
+    }
+}

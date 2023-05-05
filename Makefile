@@ -1,7 +1,7 @@
 all: mehlisp
 
 mehlisp: mehlisp.cpp
-	c++ mehlisp.cpp -o mehlisp -Wall -Os -lm -static
+	c++ mehlisp.cpp -o mehlisp -Wall -Os -lm -static -std=c++17
 
 test: mehlisp test.in test.ans
 	./mehlisp < test.in > test.out
