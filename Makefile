@@ -1,10 +1,13 @@
 all: mehlisp
 
-mehlisp: mehlisp.c
-	cc mehlisp.c -o mehlisp -Wall -Os -lm
+mehlisp: mehlisp.cpp
+	c++ mehlisp.cpp -o mehlisp -Wall -Os -lm -static
 
 test: mehlisp test.in test.ans
 	./mehlisp < test.in > test.out
 	diff test.out test.ans
 
-.PHONY: all test
+clean:
+	rm -f test.ans mehlisp
+
+.PHONY: all test clean
