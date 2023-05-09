@@ -6,20 +6,16 @@ A Lisp dialect worthy of a meh.
 
 Values in mehlisp are the following:
 
-- Atoms: numbers, nil, and t
+- Atoms: numbers, symbols, vector, lambdas, macros, environment
 - Conses
-- Symbols
-- Lambdas
-- Macros
 
 The list of special forms is the following:
 
 - quote
 - set!
 - if
-- simple-lambda
+- lambda
 - error
-- progn
 
 The list of builtin functions:
 - cons
