@@ -6,7 +6,7 @@ A Lisp dialect worthy of a meh.
 
 Values in mehlisp are the following:
 
-- Atoms: numbers, symbols, vector, lambdas, macros, environment
+- Atoms: numbers, symbols, lambdas, macros, environment
 - Conses
 
 The list of special forms is the following:
