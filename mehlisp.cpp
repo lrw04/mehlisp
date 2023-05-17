@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -16,11 +17,12 @@ using namespace std;
 
 struct trie {
     struct node {
-        int ch[128];
+        int ch[128], father;
         char path;
         node() {
             path = 0;
             for (int i = 0; i < 128; i++) ch[i] = -1;
+            father = -1;
         }
     };
     vector<node> nodes;
@@ -33,6 +35,7 @@ struct trie {
                 v = nodes.size();
                 nodes.emplace_back();
                 nodes.back().path = s[i];
+                nodes.back().father = u;
             }
             u = v;
         }
@@ -143,11 +146,32 @@ ptr gen_eof() {
 }
 
 ptr read(ptr &);
+void print(const ptr &p, ptr &port);
+
+ptr make_input_port(istream *st) {
+    ptr p;
+    p.type = TIPORT;
+    p.iport = st;
+    return p;
+}
+
+ptr make_output_port(ostream *st) {
+    ptr p;
+    p.type = TOPORT;
+    p.oport = st;
+    return p;
+}
+
+auto iport = make_input_port(&cin);
+auto oport = make_output_port(&cout);
 
 ptr read_cdr(ptr &port) {
+    if (port.type != TIPORT) ERR_EXIT("Read-cdr: not an input port");
     int c = port.iport->get();
     while (isspace(c)) c = port.iport->get();
+    if (c == EOF) ERR_EXIT("Read-cdr: unexpected EOF");
     if (c == '.') {
+        cerr << "dot" << endl;
         ptr tmp = read(port);
         do {
             c = port.iport->get();
@@ -157,8 +181,11 @@ ptr read_cdr(ptr &port) {
         else
             return tmp;
     } else if (c == ')') {
+        cerr << "rparen" << endl;
         return intern("nil");
     } else {
+        cerr << "item" << endl;
+        port.iport->unget();
         auto ccar = read(port);
         auto ccdr = read_cdr(port);
         return cons(ccar, ccdr);
@@ -171,6 +198,8 @@ ptr make_number(long double num) {
     p.number = num;
     return p;
 }
+
+bool delimp(char c) { return isspace(c) || c == '(' || c == ')'; }
 
 ptr read(ptr &port) {
     if (port.type != TIPORT) ERR_EXIT("Read: not an input port");
@@ -187,17 +216,90 @@ ptr read(ptr &port) {
         } else if (c == '<') {
             ERR_EXIT("Read: unreadable object");
         }
+        ERR_EXIT("Read: unexpected object");
     } else if (isdigit(c) || c == '+' || c == '-') {
+        port.iport->unget();
         long double n;
         (*port.iport) >> n;
         return make_number(n);
     } else if (c == '.') {
         ERR_EXIT("Read: unexpected dot");
     } else {
+        port.iport->unget();
         string s;
-        (*port.iport) >> s;
+        while (!delimp(c = port.iport->get())) {
+            s += c;
+        }
+        port.iport->unget();
         return intern(s.c_str());
     }
 }
 
-int main() { gc_init(); }
+void print(const ptr &p, ptr &port) {
+    if (port.type != TOPORT) ERR_EXIT("Print: not an output port");
+    if (p.type == TCONS) {
+        (*port.oport) << "(";
+        print(car[p.index], port);
+        (*port.oport) << " . ";
+        print(cdr[p.index], port);
+        (*port.oport) << ")";
+    } else if (p.type == TENV) {
+        (*port.oport) << "#<environment>";
+    } else if (p.type == TEOF) {
+        (*port.oport) << "#eof";
+    } else if (p.type == TIPORT) {
+        (*port.oport) << "#<input port>";
+    } else if (p.type == TOPORT) {
+        (*port.oport) << "#<output port>";
+    } else if (p.type == TMACRO) {
+        (*port.oport) << "#<macro>";
+    } else if (p.type == TPROC) {
+        (*port.oport) << "#<procedure>";
+    } else if (p.type == TPRIM) {
+        (*port.oport) << "#<primitive>";
+    } else if (p.type == TNUM) {
+        (*port.oport) << p.number;
+    } else if (p.type == TSYM) {
+        string s;
+        for (auto u = p.symbol; u >= 0; u = obarray.nodes[u].father) {
+            if (obarray.nodes[u].path) s += obarray.nodes[u].path;
+        }
+        reverse(s.begin(), s.end());
+        (*port.oport) << s;
+    } else {
+        ERR_EXIT("Print: unexpected object type");
+    }
+}
+
+bool eq(ptr p, ptr q) {
+    if (p.type == TCONS || p.type == TENV || p.type == TMACRO ||
+        p.type == TPROC) {
+        return q.type == p.type && p.index == q.index;
+    } else if (p.type == TEOF) {
+        return q.type == p.type;
+    } else if (p.type == TIPORT) {
+        return q.type == p.type && p.iport == q.iport;
+    } else if (p.type == TOPORT) {
+        return q.type == p.type && p.oport == q.oport;
+    } else if (p.type == TPRIM) {
+        return q.type == p.type && p.primitive == q.primitive;
+    } else if (p.type == TNUM) {
+        return q.type == p.type && p.number == q.number;
+    } else if (p.type == TSYM) {
+        return q.type == p.type && p.symbol == q.symbol;
+    } else {
+        ERR_EXIT("Print: unexpected object type");
+    }
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    gc_init();
+    while (true) {
+        cout << "> " << flush;
+        auto p = read(iport);
+        if (eq(p, gen_eof())) break;
+        print(p, oport);
+        cout << endl;
+    }
+}
