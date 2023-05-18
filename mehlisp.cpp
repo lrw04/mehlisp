@@ -86,6 +86,11 @@ list<long long> freel, allocl, rootl;
 
 long long memory_size = 4096;
 
+struct root_guard {
+    root_guard(long long index) { rootl.push_front(index); }
+    ~root_guard() { rootl.pop_front(); }
+};
+
 void gc_init() {
     car.resize(memory_size);
     cdr.resize(memory_size);
@@ -234,11 +239,6 @@ ptr read(ptr &port) {
             ERR_EXIT("Read: unreadable object");
         }
         ERR_EXIT("Read: unexpected object");
-    } else if (isdigit(c) || c == '+' || c == '-') {
-        port.iport->unget();
-        long double n;
-        (*port.iport) >> n;
-        return make_number(n);
     } else if (c == '.') {
         ERR_EXIT("Read: unexpected dot");
     } else {
@@ -248,7 +248,10 @@ ptr read(ptr &port) {
             s += c;
         }
         port.iport->unget();
-        return intern(s.c_str());
+        char *e;
+        long double val = strtold(s.c_str(), &e);
+        if (*e != '\0' || errno) return intern(s.c_str());
+        return make_number(val);
     }
 }
 
@@ -305,7 +308,7 @@ void print(const ptr &p, ptr &port) {
 }
 
 int main() {
-    ios::sync_with_stdio(false);
+    // ios::sync_with_stdio(false);
     gc_init();
     while (true) {
         cout << "> " << flush;
