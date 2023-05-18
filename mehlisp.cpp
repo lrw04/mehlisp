@@ -3,7 +3,6 @@
 #include <cstring>
 #include <iostream>
 #include <list>
-#include <sstream>
 #include <vector>
 
 using namespace std;
@@ -118,9 +117,9 @@ long long gc_alloc() {
     if (freel.empty()) gc_cycle();
     if (freel.empty()) {
         for (auto i = memory_size; i < memory_size * 2; i++) freel.push_back(i);
-        car.resize(memory_size * 2);
-        cdr.resize(memory_size * 2);
         memory_size *= 2;
+        car.resize(memory_size);
+        cdr.resize(memory_size);
     }
     auto p = freel.front();
     freel.pop_front();
@@ -171,7 +170,6 @@ ptr read_cdr(ptr &port) {
     while (isspace(c)) c = port.iport->get();
     if (c == EOF) ERR_EXIT("Read-cdr: unexpected EOF");
     if (c == '.') {
-        cerr << "dot" << endl;
         ptr tmp = read(port);
         do {
             c = port.iport->get();
@@ -181,10 +179,8 @@ ptr read_cdr(ptr &port) {
         else
             return tmp;
     } else if (c == ')') {
-        cerr << "rparen" << endl;
         return intern("nil");
     } else {
-        cerr << "item" << endl;
         port.iport->unget();
         auto ccar = read(port);
         auto ccdr = read_cdr(port);
@@ -200,6 +196,27 @@ ptr make_number(long double num) {
 }
 
 bool delimp(char c) { return isspace(c) || c == '(' || c == ')'; }
+
+bool eq(ptr p, ptr q) {
+    if (p.type == TCONS || p.type == TENV || p.type == TMACRO ||
+        p.type == TPROC) {
+        return q.type == p.type && p.index == q.index;
+    } else if (p.type == TEOF) {
+        return q.type == p.type;
+    } else if (p.type == TIPORT) {
+        return q.type == p.type && p.iport == q.iport;
+    } else if (p.type == TOPORT) {
+        return q.type == p.type && p.oport == q.oport;
+    } else if (p.type == TPRIM) {
+        return q.type == p.type && p.primitive == q.primitive;
+    } else if (p.type == TNUM) {
+        return q.type == p.type && p.number == q.number;
+    } else if (p.type == TSYM) {
+        return q.type == p.type && p.symbol == q.symbol;
+    } else {
+        ERR_EXIT("Print: unexpected object type");
+    }
+}
 
 ptr read(ptr &port) {
     if (port.type != TIPORT) ERR_EXIT("Read: not an input port");
@@ -235,14 +252,30 @@ ptr read(ptr &port) {
     }
 }
 
+void print(const ptr &p, ptr &port);
+
+void print_cdr(const ptr &p, ptr &port) {
+    if (p.type != TCONS) ERR_EXIT("Print-cdr: not a cons");
+    print(car[p.index], port);
+    if (cdr[p.index].type == TCONS) {
+        (*port.oport) << " ";
+        print_cdr(cdr[p.index], port);
+    } else {
+        if (eq(cdr[p.index], intern("nil"))) {
+            (*port.oport) << ")";
+            return;
+        }
+        (*port.oport) << " . ";
+        print(cdr[p.index], port);
+        (*port.oport) << ")";
+    }
+}
+
 void print(const ptr &p, ptr &port) {
     if (port.type != TOPORT) ERR_EXIT("Print: not an output port");
     if (p.type == TCONS) {
         (*port.oport) << "(";
-        print(car[p.index], port);
-        (*port.oport) << " . ";
-        print(cdr[p.index], port);
-        (*port.oport) << ")";
+        print_cdr(p, port);
     } else if (p.type == TENV) {
         (*port.oport) << "#<environment>";
     } else if (p.type == TEOF) {
@@ -266,27 +299,6 @@ void print(const ptr &p, ptr &port) {
         }
         reverse(s.begin(), s.end());
         (*port.oport) << s;
-    } else {
-        ERR_EXIT("Print: unexpected object type");
-    }
-}
-
-bool eq(ptr p, ptr q) {
-    if (p.type == TCONS || p.type == TENV || p.type == TMACRO ||
-        p.type == TPROC) {
-        return q.type == p.type && p.index == q.index;
-    } else if (p.type == TEOF) {
-        return q.type == p.type;
-    } else if (p.type == TIPORT) {
-        return q.type == p.type && p.iport == q.iport;
-    } else if (p.type == TOPORT) {
-        return q.type == p.type && p.oport == q.oport;
-    } else if (p.type == TPRIM) {
-        return q.type == p.type && p.primitive == q.primitive;
-    } else if (p.type == TNUM) {
-        return q.type == p.type && p.number == q.number;
-    } else if (p.type == TSYM) {
-        return q.type == p.type && p.symbol == q.symbol;
     } else {
         ERR_EXIT("Print: unexpected object type");
     }
