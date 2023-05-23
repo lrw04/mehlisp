@@ -67,7 +67,7 @@ struct ptr {
         ostream *oport;
         long long index;
         ptr (*primitive)(ptr &, ptr &);
-        //               args env
+        //               args   env
     };
 };
 
@@ -88,9 +88,24 @@ list<ptr *> rootl;
 long long memory_size = 16;
 
 struct root_guard {
-    root_guard(ptr &p) { rootl.push_front(&p); }
+    explicit root_guard(ptr &p) { rootl.push_front(&p); }
     ~root_guard() { rootl.pop_front(); }
 };
+
+bool effective_cons_p(ptr p) {
+    return p.type == TCONS || p.type == TENV || p.type == TMACRO ||
+           p.type == TPROC;
+}
+
+ptr& get_car(ptr p) {
+    if (!effective_cons_p(p)) ERR_EXIT("Get-car on non-cons");
+    return car[p.index];
+}
+
+ptr& get_cdr(ptr p) {
+    if (!effective_cons_p(p)) ERR_EXIT("Get-cdr on non-cons");
+    return cdr[p.index];
+}
 
 void gc_init() {
     car.resize(memory_size);
@@ -104,11 +119,6 @@ void gc_mark(long long u) {
     mark[u] = true;
     if (car[u].type >= TPROC) gc_mark(car[u].index);
     if (cdr[u].type >= TPROC) gc_mark(cdr[u].index);
-}
-
-bool effective_cons_p(ptr p) {
-    return p.type == TCONS || p.type == TENV || p.type == TMACRO ||
-           p.type == TPROC;
 }
 
 void gc_cycle() {
@@ -138,7 +148,7 @@ long long gc_alloc() {
     // for (auto i : rootl)
     //     if (effective_cons_p(*i)) cerr << i->index << " ";
     // cerr << endl;
-    gc_cycle();
+    // gc_cycle();
     if (freel.empty()) gc_cycle();
     if (freel.empty()) {
         for (auto i = memory_size; i < memory_size * 2; i++) freel.push_back(i);
@@ -330,14 +340,42 @@ void print(const ptr &p, ptr &port) {
     }
 }
 
+ptr make_unbound() {
+    ptr p;
+    p.type = TUNBOUND;
+    return p;
+}
+
+ptr lookup(ptr& env, const ptr& sym) {
+    if (eq(env, intern("nil"))) {
+        return make_unbound();
+    }
+    auto p = get_car(env);
+    for (auto i = p; !eq(i, intern("nil")); i = get_cdr(i)) {
+        auto c = get_car(i);
+        if (eq(get_car(c), sym)) return c;
+    }
+    return lookup(get_cdr(env), sym);
+}
+
+ptr eval(const ptr& expr, ptr& env) {
+}
+
+ptr initial_environment() {
+}
+
 int main() {
     gc_init();
+    ptr env = make_ptr();
+    root_guard g(env);
+    env = initial_environment();
     while (true) {
         cout << "> " << flush;
-        ptr p = make_ptr();
-        root_guard g(p);
+        ptr p = make_ptr(), q = make_ptr();
+        root_guard g(p), h(q);
         p = read(iport);
         if (eq(p, gen_eof())) break;
+        q = eval(p, env);
         print(p, oport);
         cout << endl;
     }
