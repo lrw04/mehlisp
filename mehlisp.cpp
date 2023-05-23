@@ -359,6 +359,13 @@ ptr lookup(ptr& env, const ptr& sym) {
 }
 
 ptr eval(const ptr& expr, ptr& env) {
+    if (expr.type != TCONS) {
+        if (expr.type == TSYM) {
+            if (eq(expr, intern("nil")) || eq(expr, intern("t"))) return expr;
+            return get_cdr(lookup(env, expr));
+        }
+        return expr;
+    }
 }
 
 ptr initial_environment() {
