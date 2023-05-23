@@ -82,12 +82,13 @@ ptr intern(const char *s) { return intern(s, strlen(s)); }
 
 vector<ptr> car, cdr;
 vector<bool> mark;
-list<long long> freel, allocl, rootl;
+list<long long> freel, allocl;
+list<ptr *> rootl;
 
 long long memory_size = 4096;
 
 struct root_guard {
-    root_guard(long long index) { rootl.push_front(index); }
+    root_guard(ptr &p) { rootl.push_front(&p); }
     ~root_guard() { rootl.pop_front(); }
 };
 
@@ -105,9 +106,15 @@ void gc_mark(long long u) {
     if (cdr[u].type >= TPROC) gc_mark(cdr[u].index);
 }
 
+bool effective_cons_p(ptr p) {
+    return p.type == TCONS || p.type == TENV || p.type == TMACRO ||
+           p.type == TPROC;
+}
+
 void gc_cycle() {
     for (auto p : allocl) mark[p] = false;
-    for (auto p : rootl) gc_mark(p);
+    for (auto p : rootl)
+        if (effective_cons_p(*p)) gc_mark(p->index);
     for (auto it = allocl.begin(); it != allocl.end();) {
         if (mark[*it]) {
             it++;
@@ -119,6 +126,7 @@ void gc_cycle() {
 }
 
 long long gc_alloc() {
+    gc_cycle();
     if (freel.empty()) gc_cycle();
     if (freel.empty()) {
         for (auto i = memory_size; i < memory_size * 2; i++) freel.push_back(i);
@@ -187,8 +195,11 @@ ptr read_cdr(ptr &port) {
         return intern("nil");
     } else {
         port.iport->unget();
-        auto ccar = read(port);
-        auto ccdr = read_cdr(port);
+        ptr ccar, ccdr;
+        root_guard carg(ccar);
+        ccar = read(port);
+        root_guard cdrg(ccdr);
+        ccdr = read_cdr(port);
         return cons(ccar, ccdr);
     }
 }
@@ -308,13 +319,15 @@ void print(const ptr &p, ptr &port) {
 }
 
 int main() {
-    // ios::sync_with_stdio(false);
     gc_init();
     while (true) {
         cout << "> " << flush;
-        auto p = read(iport);
+        ptr p;
+        root_guard g(p);
+        p = read(iport);
         if (eq(p, gen_eof())) break;
         print(p, oport);
         cout << endl;
     }
+    cout << endl;
 }
