@@ -85,7 +85,7 @@ vector<bool> mark;
 list<long long> freel, allocl;
 list<ptr *> rootl;
 
-long long memory_size = 4096;
+long long memory_size = 16;
 
 struct root_guard {
     root_guard(ptr &p) { rootl.push_front(&p); }
@@ -112,6 +112,7 @@ bool effective_cons_p(ptr p) {
 }
 
 void gc_cycle() {
+    // auto prev = freel.size();
     for (auto p : allocl) mark[p] = false;
     for (auto p : rootl)
         if (effective_cons_p(*p)) gc_mark(p->index);
@@ -120,12 +121,23 @@ void gc_cycle() {
             it++;
         } else {
             freel.push_front(*it);
-            allocl.erase(it);
+            it = allocl.erase(it);
         }
     }
+    // cerr << "Freed " << freel.size() - prev << " cons cells" << endl;
+    // for (auto i : freel) cerr << i << " ";
+    // cerr << endl;
+    // for (auto i : rootl)
+    //     if (effective_cons_p(*i)) cerr << i->index << " ";
+    // cerr << endl;
 }
 
 long long gc_alloc() {
+    // for (auto i : freel) cerr << i << " ";
+    // cerr << endl;
+    // for (auto i : rootl)
+    //     if (effective_cons_p(*i)) cerr << i->index << " ";
+    // cerr << endl;
     gc_cycle();
     if (freel.empty()) gc_cycle();
     if (freel.empty()) {
@@ -177,6 +189,15 @@ ptr make_output_port(ostream *st) {
 auto iport = make_input_port(&cin);
 auto oport = make_output_port(&cout);
 
+ptr make_number(long double num) {
+    ptr p;
+    p.type = TNUM;
+    p.number = num;
+    return p;
+}
+
+ptr make_ptr() { return make_number(0); }
+
 ptr read_cdr(ptr &port) {
     if (port.type != TIPORT) ERR_EXIT("Read-cdr: not an input port");
     int c = port.iport->get();
@@ -195,20 +216,13 @@ ptr read_cdr(ptr &port) {
         return intern("nil");
     } else {
         port.iport->unget();
-        ptr ccar, ccdr;
+        ptr ccar = make_ptr(), ccdr = make_ptr();
         root_guard carg(ccar);
         ccar = read(port);
         root_guard cdrg(ccdr);
         ccdr = read_cdr(port);
         return cons(ccar, ccdr);
     }
-}
-
-ptr make_number(long double num) {
-    ptr p;
-    p.type = TNUM;
-    p.number = num;
-    return p;
 }
 
 bool delimp(char c) { return isspace(c) || c == '(' || c == ')'; }
@@ -266,8 +280,6 @@ ptr read(ptr &port) {
     }
 }
 
-void print(const ptr &p, ptr &port);
-
 void print_cdr(const ptr &p, ptr &port) {
     if (p.type != TCONS) ERR_EXIT("Print-cdr: not a cons");
     print(car[p.index], port);
@@ -322,7 +334,7 @@ int main() {
     gc_init();
     while (true) {
         cout << "> " << flush;
-        ptr p;
+        ptr p = make_ptr();
         root_guard g(p);
         p = read(iport);
         if (eq(p, gen_eof())) break;
