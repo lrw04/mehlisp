@@ -253,8 +253,10 @@ bool eq(ptr p, ptr q) {
         return q.type == p.type && p.number == q.number;
     } else if (p.type == TSYM) {
         return q.type == p.type && p.symbol == q.symbol;
+    } else if (p.type == TUNBOUND) {
+        return q.type == p.type;
     } else {
-        ERR_EXIT("Print: unexpected object type");
+        ERR_EXIT("Eq: unexpected object type");
     }
 }
 
@@ -362,7 +364,9 @@ ptr eval(const ptr& expr, ptr& env) {
     if (expr.type != TCONS) {
         if (expr.type == TSYM) {
             if (eq(expr, intern("nil")) || eq(expr, intern("t"))) return expr;
-            return get_cdr(lookup(env, expr));
+            auto p = lookup(env, expr);
+            if (eq(p, make_unbound())) ERR_EXIT("Eval: unbound variable");
+            return get_cdr(p);
         }
         return expr;
     }
