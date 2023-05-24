@@ -148,7 +148,7 @@ long long gc_alloc() {
     // for (auto i : rootl)
     //     if (effective_cons_p(*i)) cerr << i->index << " ";
     // cerr << endl;
-    // gc_cycle();
+    gc_cycle();
     if (freel.empty()) gc_cycle();
     if (freel.empty()) {
         for (auto i = memory_size; i < memory_size * 2; i++) freel.push_back(i);
@@ -278,6 +278,12 @@ ptr read(ptr &port) {
         ERR_EXIT("Read: unexpected object");
     } else if (c == '.') {
         ERR_EXIT("Read: unexpected dot");
+    } else if (c == '\'') {
+        ptr quote = intern("quote"), text = make_ptr(), ccdr = make_ptr();
+        root_guard g1(quote), g2(text), g3(ccdr);
+        text = read(port);
+        ccdr = cons(text, intern("nil"));
+        return cons(quote, ccdr);
     } else {
         port.iport->unget();
         string s;
@@ -352,6 +358,7 @@ ptr lookup(ptr& env, const ptr& sym) {
     if (eq(env, intern("nil"))) {
         return make_unbound();
     }
+    if (env.type != TENV) ERR_EXIT("Lookup: not an environment");
     auto p = get_car(env);
     for (auto i = p; !eq(i, intern("nil")); i = get_cdr(i)) {
         auto c = get_car(i);
@@ -370,9 +377,12 @@ ptr eval(const ptr& expr, ptr& env) {
         }
         return expr;
     }
+    if (eq(get_car(expr), intern("quote"))) return get_car(get_cdr(expr));
+    ERR_EXIT("Eval: unknown expression type");
 }
 
 ptr initial_environment() {
+    return cons(intern("nil"), intern("nil"), TENV);
 }
 
 int main() {
