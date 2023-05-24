@@ -383,7 +383,7 @@ int main() {
         p = read(iport);
         if (eq(p, gen_eof())) break;
         q = eval(p, env);
-        print(p, oport);
+        print(q, oport);
         cout << endl;
     }
     cout << endl;
