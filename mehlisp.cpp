@@ -97,12 +97,12 @@ bool effective_cons_p(ptr p) {
            p.type == TPROC;
 }
 
-ptr& get_car(ptr p) {
+ptr &get_car(ptr p) {
     if (!effective_cons_p(p)) ERR_EXIT("Get-car on non-cons");
     return car[p.index];
 }
 
-ptr& get_cdr(ptr p) {
+ptr &get_cdr(ptr p) {
     if (!effective_cons_p(p)) ERR_EXIT("Get-cdr on non-cons");
     return cdr[p.index];
 }
@@ -354,7 +354,7 @@ ptr make_unbound() {
     return p;
 }
 
-ptr lookup(ptr& env, const ptr& sym) {
+ptr lookup(ptr &env, const ptr &sym) {
     if (eq(env, intern("nil"))) {
         return make_unbound();
     }
@@ -367,7 +367,8 @@ ptr lookup(ptr& env, const ptr& sym) {
     return lookup(get_cdr(env), sym);
 }
 
-ptr eval(const ptr& expr, ptr& env) {
+ptr eval(ptr expr, ptr &env) {
+eval_start:
     if (expr.type != TCONS) {
         if (expr.type == TSYM) {
             if (eq(expr, intern("nil")) || eq(expr, intern("t"))) return expr;
@@ -378,12 +379,24 @@ ptr eval(const ptr& expr, ptr& env) {
         return expr;
     }
     if (eq(get_car(expr), intern("quote"))) return get_car(get_cdr(expr));
+    if (eq(get_car(expr), intern("if"))) {
+        auto p = make_ptr();
+        root_guard g(p);
+        p = eval(get_car(get_cdr(expr)), env);
+        if (eq(p, intern("nil"))) {
+            // alternative or nil
+            if (eq(get_cdr(get_cdr(expr)), intern("nil"))) return intern("nil");
+            expr = get_car(get_cdr(get_cdr(get_cdr(expr))));
+            goto eval_start;
+        } else {
+            expr = get_car(get_cdr(get_cdr(expr)));
+            goto eval_start;
+        }
+    }
     ERR_EXIT("Eval: unknown expression type");
 }
 
-ptr initial_environment() {
-    return cons(intern("nil"), intern("nil"), TENV);
-}
+ptr initial_environment() { return cons(intern("nil"), intern("nil"), TENV); }
 
 int main() {
     gc_init();
