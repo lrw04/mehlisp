@@ -385,7 +385,7 @@ eval_start:
         p = eval(get_car(get_cdr(expr)), env);
         if (eq(p, intern("nil"))) {
             // alternative or nil
-            if (eq(get_cdr(get_cdr(expr)), intern("nil"))) return intern("nil");
+            if (eq(get_cdr(get_cdr(get_cdr(expr))), intern("nil"))) return intern("nil");
             expr = get_car(get_cdr(get_cdr(get_cdr(expr))));
             goto eval_start;
         } else {
