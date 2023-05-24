@@ -85,7 +85,7 @@ vector<bool> mark;
 list<long long> freel, allocl;
 list<ptr *> rootl;
 
-long long memory_size = 16;
+long long memory_size = 6;
 
 struct root_guard {
     explicit root_guard(ptr &p) { rootl.push_front(&p); }
@@ -162,6 +162,15 @@ long long gc_alloc() {
     return p;
 }
 
+ptr make_number(long double num) {
+    ptr p;
+    p.type = TNUM;
+    p.number = num;
+    return p;
+}
+
+ptr make_ptr() { return make_number(0); }
+
 ptr cons(const ptr &ccar, const ptr &ccdr, type_t type = TCONS) {
     ptr p;
     p.type = type;
@@ -171,7 +180,12 @@ ptr cons(const ptr &ccar, const ptr &ccdr, type_t type = TCONS) {
     return p;
 }
 
-void push(ptr &lst, const ptr &ccar) { lst = cons(ccar, lst); }
+void push(ptr &lst, ptr ccar) {
+    auto p = make_ptr();
+    root_guard g(p);
+    p = cons(ccar, lst);
+    lst = p;
+}
 
 ptr gen_eof() {
     ptr p;
@@ -198,15 +212,6 @@ ptr make_output_port(ostream *st) {
 
 auto iport = make_input_port(&cin);
 auto oport = make_output_port(&cout);
-
-ptr make_number(long double num) {
-    ptr p;
-    p.type = TNUM;
-    p.number = num;
-    return p;
-}
-
-ptr make_ptr() { return make_number(0); }
 
 ptr read_cdr(ptr &port) {
     if (port.type != TIPORT) ERR_EXIT("Read-cdr: not an input port");
@@ -299,7 +304,6 @@ ptr read(ptr &port) {
 }
 
 void print_cdr(const ptr &p, ptr &port) {
-    if (p.type != TCONS) ERR_EXIT("Print-cdr: not a cons");
     print(car[p.index], port);
     if (cdr[p.index].type == TCONS) {
         (*port.oport) << " ";
@@ -360,6 +364,7 @@ lookup_start:
         return make_unbound();
     }
     if (env.type != TENV) ERR_EXIT("Lookup: not an environment");
+    if (sym.type != TSYM) ERR_EXIT("Lookup: not a symbol");
     auto p = get_car(env);
     for (auto i = p; !eq(i, intern("nil")); i = get_cdr(i)) {
         auto c = get_car(i);
@@ -367,6 +372,26 @@ lookup_start:
     }
     env = get_cdr(env);
     goto lookup_start;
+}
+
+void print_mem() {
+    for (long long i = 0; i < memory_size; i++) {
+        cerr << i << ": ";
+        if (effective_cons_p(car[i]))
+            cerr << "C" << car[i].index;
+        else if (car[i].type == TNUM)
+            cerr << car[i].number;
+        else if (car[i].type == TSYM)
+            print(car[i], oport);
+        cerr << " ";
+        if (effective_cons_p(cdr[i]))
+            cerr << "C" << cdr[i].index;
+        else if (cdr[i].type == TNUM)
+            cerr << cdr[i].number;
+        else if (cdr[i].type == TSYM)
+            print(cdr[i], oport);
+        cerr << endl;
+    }
 }
 
 ptr eval(ptr expr, ptr &env) {
@@ -387,13 +412,29 @@ eval_start:
         p = eval(get_car(get_cdr(expr)), env);
         if (eq(p, intern("nil"))) {
             // alternative or nil
-            if (eq(get_cdr(get_cdr(get_cdr(expr))), intern("nil"))) return intern("nil");
+            if (eq(get_cdr(get_cdr(get_cdr(expr))), intern("nil")))
+                return intern("nil");
             expr = get_car(get_cdr(get_cdr(get_cdr(expr))));
-            goto eval_start;
+            goto eval_start;  // tail call to eval
         } else {
             expr = get_car(get_cdr(get_cdr(expr)));
             goto eval_start;
         }
+    }
+    if (eq(get_car(expr), intern("set!"))) {
+        auto p = make_ptr();
+        root_guard g(p);
+        p = lookup(env, get_car(get_cdr(expr)));
+        if (eq(p, make_unbound())) {
+            auto pair = make_ptr(), lst = make_ptr();
+            root_guard g1(pair), g2(lst);
+            pair = cons(get_car(get_cdr(expr)), make_unbound());
+            lst = cons(pair, get_car(env));
+            get_car(env) = lst;
+        }
+        p = lookup(env, get_car(get_cdr(expr)));
+        get_cdr(p) = eval(get_car(get_cdr(get_cdr(expr))), env);
+        return get_car(get_cdr(expr));
     }
     ERR_EXIT("Eval: unknown expression type");
 }
