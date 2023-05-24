@@ -354,7 +354,8 @@ ptr make_unbound() {
     return p;
 }
 
-ptr lookup(ptr &env, const ptr &sym) {
+ptr lookup(ptr env, const ptr &sym) {
+lookup_start:
     if (eq(env, intern("nil"))) {
         return make_unbound();
     }
@@ -364,7 +365,8 @@ ptr lookup(ptr &env, const ptr &sym) {
         auto c = get_car(i);
         if (eq(get_car(c), sym)) return c;
     }
-    return lookup(get_cdr(env), sym);
+    env = get_cdr(env);
+    goto lookup_start;
 }
 
 ptr eval(ptr expr, ptr &env) {
