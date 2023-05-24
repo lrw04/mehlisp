@@ -66,8 +66,6 @@ struct ptr {
         istream *iport;
         ostream *oport;
         long long index;
-        ptr (*primitive)(ptr &, ptr &);
-        //               args   env
     };
 };
 
@@ -253,7 +251,7 @@ bool eq(ptr p, ptr q) {
     } else if (p.type == TOPORT) {
         return q.type == p.type && p.oport == q.oport;
     } else if (p.type == TPRIM) {
-        return q.type == p.type && p.primitive == q.primitive;
+        return q.type == p.type && p.index == q.index;
     } else if (p.type == TNUM) {
         return q.type == p.type && p.number == q.number;
     } else if (p.type == TSYM) {
@@ -394,6 +392,27 @@ void print_mem() {
     }
 }
 
+ptr make_procedure(ptr formals, ptr body, ptr env, type_t type = TPROC) {
+    ptr p = make_ptr();
+    root_guard g(p);
+    p = cons(formals, body);
+    return cons(env, p, type);
+}
+
+ptr procedure_formals(ptr f) { return get_car(get_cdr(f)); }
+ptr procedure_body(ptr f) { return get_cdr(get_cdr(f)); }
+ptr procedure_env(ptr f) { return get_car(f); }
+
+ptr eval(ptr expr, ptr &env);
+
+ptr evlis(ptr args, ptr &env) {
+    if (eq(args, intern("nil"))) return intern("nil");
+    ptr p = make_ptr();
+    root_guard g(p);
+    p = eval(get_car(args), env);
+    return cons(p, evlis(get_cdr(args), env));
+}
+
 ptr eval(ptr expr, ptr &env) {
 eval_start:
     if (expr.type != TCONS) {
@@ -435,6 +454,24 @@ eval_start:
         p = lookup(env, get_car(get_cdr(expr)));
         get_cdr(p) = eval(get_car(get_cdr(get_cdr(expr))), env);
         return get_car(get_cdr(expr));
+    }
+    if (eq(get_car(expr), intern("lambda"))) {
+        return make_procedure(get_car(get_cdr(expr)), get_cdr(get_cdr(expr)),
+                              env, TPROC);
+    }
+    if (eq(get_car(expr), intern("syntax-lambda"))) {
+        return make_procedure(get_car(get_cdr(expr)), get_cdr(get_cdr(expr)),
+                              env, TMACRO);
+    }
+    auto p = make_ptr(), args = make_ptr();
+    root_guard g1(p), g2(args);
+    p = eval(get_car(expr), env);
+    if (p.type == TPROC) {
+        args = evlis(get_cdr(expr), env);
+        // TODO
+    } else if (p.type == TMACRO) {
+        args = get_cdr(expr);
+        // TODO
     }
     ERR_EXIT("Eval: unknown expression type");
 }
