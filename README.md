@@ -15,6 +15,7 @@ The list of special forms is the following:
 - set!
 - if
 - lambda
+- syntax
 
 The list of builtin functions:
 - cons, consp

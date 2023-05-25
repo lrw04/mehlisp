@@ -347,8 +347,10 @@ void print(const ptr &p, ptr &port) {
         }
         reverse(s.begin(), s.end());
         (*port.oport) << s;
+    } else if (p.type == TUNBOUND) {
+        (*port.oport) << "#<unbound>";
     } else {
-        ERR_EXIT("Print: unexpected object type");
+        ERR_EXIT("Print: unexpected object type: %d", p.type);
     }
 }
 
@@ -358,8 +360,9 @@ ptr make_unbound() {
     return p;
 }
 
-ptr lookup(ptr env, const ptr &sym) {
+ptr lookup(ptr env, ptr sym) {
 lookup_start:
+    root_guard g1(env), g2(sym);
     if (eq(env, intern("nil"))) {
         return make_unbound();
     }
@@ -425,7 +428,10 @@ ptr make_frame(ptr formals, ptr args) {
         ERR_EXIT("Make-frame: too many arguments");
     if (eq(formals, intern("nil"))) return intern("nil");
     if (formals.type == TSYM) {
-        return cons(formals, args);
+        auto p = make_ptr();
+        root_guard g(p);
+        p = cons(formals, args);
+        return cons(p, intern("nil"));
     }
     if (formals.type != TCONS) ERR_EXIT("Make-frame: expected cons");
     if (get_car(formals).type != TSYM)
@@ -484,7 +490,7 @@ eval_start:
         return make_procedure(get_car(get_cdr(expr)), get_cdr(get_cdr(expr)),
                               *env, TPROC);
     }
-    if (eq(get_car(expr), intern("syntax-lambda"))) {
+    if (eq(get_car(expr), intern("syntax"))) {
         return make_procedure(get_car(get_cdr(expr)), get_cdr(get_cdr(expr)),
                               *env, TMACRO);
     }
@@ -504,6 +510,7 @@ eval_start:
             eval(get_car(body), &newenv);
             body = get_cdr(body);
         }
+        // special handling for last clause in lambda
         expr = get_car(body);
         env = &newenv;
         goto eval_start;
@@ -514,7 +521,21 @@ eval_start:
     } else if (p.type == TMACRO) {
         args = get_cdr(expr);
         // apply and eval
-        // TODO
+        auto body = make_ptr(), frame = make_ptr(), newenv = make_ptr();
+        root_guard g1(body), g2(frame), g3(newenv);
+        body = procedure_body(p);
+        frame = make_frame(procedure_formals(p), args);
+        newenv = cons(frame, *env, TENV);
+        if (eq(body, intern("nil"))) return intern("nil");
+        while (!eq(get_cdr(body), intern("nil"))) {
+            eval(get_car(body), &newenv);
+            body = get_cdr(body);
+        }
+        // special handling for last clause in lambda
+        expr = get_car(body);
+        env = &newenv;
+        expr = eval(expr, env);
+        goto eval_start;
     }
     ERR_EXIT("Eval: unknown expression type");
 }
