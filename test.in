@@ -8,3 +8,4 @@ b
 (set! b (lambda (x y) y))
 (a 1 2)
 (b 1 2)
+((lambda () (set! x 1) (set! x 2) x))

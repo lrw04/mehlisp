@@ -421,10 +421,9 @@ ptr evlis(ptr args, ptr &env) {
 
 ptr make_frame(ptr formals, ptr args) {
     root_guard g1(formals), g2(args);
-    // print(formals, oport);
-    // print(args, oport);
     if (eq(formals, intern("nil")) && (!eq(args, intern("nil"))))
         ERR_EXIT("Make-frame: too many arguments");
+    if (eq(formals, intern("nil"))) return intern("nil");
     if (formals.type == TSYM) {
         return cons(formals, args);
     }
