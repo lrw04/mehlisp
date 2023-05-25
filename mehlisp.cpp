@@ -511,29 +511,18 @@ eval_start:
     } else if (p.type == TPRIM) {
         args = evlis(get_cdr(expr), *env);
         // apply
+        // TODO
     } else if (p.type == TMACRO) {
         args = get_cdr(expr);
         // apply and eval
+        // TODO
     }
     ERR_EXIT("Eval: unknown expression type");
 }
 
-ptr initial_environment() { return cons(intern("nil"), intern("nil"), TENV); }
-
-bool stdin_filep() {
-    struct stat fileStat;
-    int fd = fileno(stdin);
-
-    // Get file status
-    if (fstat(fd, &fileStat) == -1) {
-        // Error occurred while retrieving file status
-        return false;
-    }
-    // Check if the file descriptor refers to a regular file
-    if (S_ISREG(fileStat.st_mode)) {
-        // return true;
-    }
-    return false;
+ptr initial_environment() {
+    return cons(intern("nil"), intern("nil"), TENV);
+    // TODO
 }
 
 int main(int argc, char **argv) {
@@ -542,16 +531,14 @@ int main(int argc, char **argv) {
     root_guard g(env);
     env = initial_environment();
     while (true) {
-        if (!stdin_filep()) cout << "> " << flush;
+        cout << "> " << flush;
         ptr p = make_ptr(), q = make_ptr();
         root_guard g1(p), g2(q);
         p = read(iport);
         if (eq(p, gen_eof())) break;
         q = eval(p, &env);
-        if (!stdin_filep()) {
-            print(q, oport);
-            cout << endl;
-        }
+        print(q, oport);
+        cout << endl;
     }
-    if (!stdin_filep()) cout << endl;
+    cout << endl;
 }
