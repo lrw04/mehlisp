@@ -5,7 +5,7 @@ mehlisp: mehlisp.cpp
 
 test: mehlisp test.in test.ans
 	./mehlisp < test.in > test.out
-	diff test.out test.ans
+	diff -s test.out test.ans
 
 clean:
 	rm -f test.out mehlisp

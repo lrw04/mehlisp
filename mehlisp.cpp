@@ -1,10 +1,11 @@
+#include <sys/stat.h>
+
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <list>
 #include <vector>
-
 using namespace std;
 
 #define ERR_EXIT(...)                 \
@@ -210,6 +211,7 @@ ptr make_output_port(ostream *st) {
 
 auto iport = make_input_port(&cin);
 auto oport = make_output_port(&cout);
+auto eport = make_output_port(&cerr);
 
 ptr read_cdr(ptr &port) {
     if (port.type != TIPORT) ERR_EXIT("Read-cdr: not an input port");
@@ -266,8 +268,8 @@ bool eq(ptr p, ptr q) {
 ptr read(ptr &port) {
     if (port.type != TIPORT) ERR_EXIT("Read: not an input port");
     int c = port.iport->get();
-    if (c == EOF) return gen_eof();
     while (isspace(c)) c = port.iport->get();
+    if (c == EOF) return gen_eof();
 
     if (c == '(') return read_cdr(port);
     if (c == '#') {
@@ -368,6 +370,7 @@ lookup_start:
         auto c = get_car(i);
         if (eq(get_car(c), sym)) return c;
     }
+    // try parent
     env = get_cdr(env);
     goto lookup_start;
 }
@@ -375,19 +378,21 @@ lookup_start:
 void print_mem() {
     for (long long i = 0; i < memory_size; i++) {
         cerr << i << ": ";
+        cerr << car[i].type << "-";
         if (effective_cons_p(car[i]))
-            cerr << "C" << car[i].index;
+            cerr << car[i].index;
         else if (car[i].type == TNUM)
             cerr << car[i].number;
         else if (car[i].type == TSYM)
-            print(car[i], oport);
+            print(car[i], eport);
         cerr << " ";
+        cerr << cdr[i].type << "-";
         if (effective_cons_p(cdr[i]))
-            cerr << "C" << cdr[i].index;
+            cerr << cdr[i].index;
         else if (cdr[i].type == TNUM)
             cerr << cdr[i].number;
         else if (cdr[i].type == TSYM)
-            print(cdr[i], oport);
+            print(cdr[i], eport);
         cerr << endl;
     }
 }
@@ -403,22 +408,43 @@ ptr procedure_formals(ptr f) { return get_car(get_cdr(f)); }
 ptr procedure_body(ptr f) { return get_cdr(get_cdr(f)); }
 ptr procedure_env(ptr f) { return get_car(f); }
 
-ptr eval(ptr expr, ptr &env);
+ptr eval(ptr expr, ptr *env);
 
 ptr evlis(ptr args, ptr &env) {
     if (eq(args, intern("nil"))) return intern("nil");
-    ptr p = make_ptr();
-    root_guard g(p);
-    p = eval(get_car(args), env);
-    return cons(p, evlis(get_cdr(args), env));
+    ptr p = make_ptr(), q = make_ptr();
+    root_guard g1(p), g2(q);
+    p = eval(get_car(args), &env);
+    q = evlis(get_cdr(args), env);
+    return cons(p, q);
 }
 
-ptr eval(ptr expr, ptr &env) {
+ptr make_frame(ptr formals, ptr args) {
+    root_guard g1(formals), g2(args);
+    // print(formals, oport);
+    // print(args, oport);
+    if (eq(formals, intern("nil")) && (!eq(args, intern("nil"))))
+        ERR_EXIT("Make-frame: too many arguments");
+    if (formals.type == TSYM) {
+        return cons(formals, args);
+    }
+    if (formals.type != TCONS) ERR_EXIT("Make-frame: expected cons");
+    if (get_car(formals).type != TSYM)
+        ERR_EXIT("Make-frame: non-symbol on car of formals");
+    auto p = make_ptr(), q = make_ptr();
+    root_guard g3(p), g4(q);
+    p = make_frame(get_cdr(formals), get_cdr(args));
+    q = cons(get_car(formals), get_car(args));
+    return cons(q, p);
+}
+
+ptr eval(ptr expr, ptr *env) {
 eval_start:
+    root_guard g1(expr), g2(*env);
     if (expr.type != TCONS) {
         if (expr.type == TSYM) {
             if (eq(expr, intern("nil")) || eq(expr, intern("t"))) return expr;
-            auto p = lookup(env, expr);
+            auto p = lookup(*env, expr);
             if (eq(p, make_unbound())) ERR_EXIT("Eval: unbound variable");
             return get_cdr(p);
         }
@@ -443,55 +469,89 @@ eval_start:
     if (eq(get_car(expr), intern("set!"))) {
         auto p = make_ptr();
         root_guard g(p);
-        p = lookup(env, get_car(get_cdr(expr)));
+        p = lookup(*env, get_car(get_cdr(expr)));
         if (eq(p, make_unbound())) {
             auto pair = make_ptr(), lst = make_ptr();
             root_guard g1(pair), g2(lst);
             pair = cons(get_car(get_cdr(expr)), make_unbound());
-            lst = cons(pair, get_car(env));
-            get_car(env) = lst;
+            lst = cons(pair, get_car(*env));
+            get_car(*env) = lst;
         }
-        p = lookup(env, get_car(get_cdr(expr)));
+        p = lookup(*env, get_car(get_cdr(expr)));
         get_cdr(p) = eval(get_car(get_cdr(get_cdr(expr))), env);
         return get_car(get_cdr(expr));
     }
     if (eq(get_car(expr), intern("lambda"))) {
         return make_procedure(get_car(get_cdr(expr)), get_cdr(get_cdr(expr)),
-                              env, TPROC);
+                              *env, TPROC);
     }
     if (eq(get_car(expr), intern("syntax-lambda"))) {
         return make_procedure(get_car(get_cdr(expr)), get_cdr(get_cdr(expr)),
-                              env, TMACRO);
+                              *env, TMACRO);
     }
     auto p = make_ptr(), args = make_ptr();
-    root_guard g1(p), g2(args);
+    root_guard gg1(p), gg2(args);
     p = eval(get_car(expr), env);
     if (p.type == TPROC) {
-        args = evlis(get_cdr(expr), env);
-        // TODO
+        args = evlis(get_cdr(expr), *env);
+        // apply
+        auto body = make_ptr(), frame = make_ptr(), newenv = make_ptr();
+        root_guard g1(body), g2(frame), g3(newenv);
+        body = procedure_body(p);
+        frame = make_frame(procedure_formals(p), args);
+        newenv = cons(frame, *env, TENV);
+        if (eq(body, intern("nil"))) return intern("nil");
+        while (!eq(get_cdr(body), intern("nil"))) {
+            eval(get_car(body), &newenv);
+            body = get_cdr(body);
+        }
+        expr = get_car(body);
+        env = &newenv;
+        goto eval_start;
+    } else if (p.type == TPRIM) {
+        args = evlis(get_cdr(expr), *env);
+        // apply
     } else if (p.type == TMACRO) {
         args = get_cdr(expr);
-        // TODO
+        // apply and eval
     }
     ERR_EXIT("Eval: unknown expression type");
 }
 
 ptr initial_environment() { return cons(intern("nil"), intern("nil"), TENV); }
 
-int main() {
+bool stdin_filep() {
+    struct stat fileStat;
+    int fd = fileno(stdin);
+
+    // Get file status
+    if (fstat(fd, &fileStat) == -1) {
+        // Error occurred while retrieving file status
+        return false;
+    }
+    // Check if the file descriptor refers to a regular file
+    if (S_ISREG(fileStat.st_mode)) {
+        // return true;
+    }
+    return false;
+}
+
+int main(int argc, char **argv) {
     gc_init();
     ptr env = make_ptr();
     root_guard g(env);
     env = initial_environment();
     while (true) {
-        cout << "> " << flush;
+        if (!stdin_filep()) cout << "> " << flush;
         ptr p = make_ptr(), q = make_ptr();
-        root_guard g(p), h(q);
+        root_guard g1(p), g2(q);
         p = read(iport);
         if (eq(p, gen_eof())) break;
-        q = eval(p, env);
-        print(q, oport);
-        cout << endl;
+        q = eval(p, &env);
+        if (!stdin_filep()) {
+            print(q, oport);
+            cout << endl;
+        }
     }
-    cout << endl;
+    if (!stdin_filep()) cout << endl;
 }
