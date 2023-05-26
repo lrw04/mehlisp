@@ -4,6 +4,11 @@ A Lisp dialect worthy of a meh.
 
 ## Design
 
+Features of mehlisp:
+- Lisp-1
+- Proper tail recursion
+- Bearable minimum amount of C++ code
+
 Values in mehlisp are the following:
 
 - Atoms: numbers, symbols, lambdas, macros, environment
