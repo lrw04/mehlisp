@@ -550,15 +550,32 @@ int main(int argc, char **argv) {
     ptr env = make_ptr();
     root_guard g(env);
     env = initial_environment();
+    populate_primitives(env);
+    for (int i = 1; i < argc; i++) {
+        bool filep = strcmp(argv[i], "-");
+        ifstream st;
+        if (filep) {
+            st.open(argv[i]);
+            iport = make_input_port(&st);
+        } else {
+            iport = make_input_port(&cin);
+        }
     while (true) {
-        cout << "> " << flush;
-        ptr p = make_ptr(), q = make_ptr();
-        root_guard g1(p), g2(q);
-        p = read(iport);
-        if (eq(p, gen_eof())) break;
-        q = eval(p, &env);
-        print(q, oport);
-        cout << endl;
+            if (!filep) cout << "> " << flush;
+            ptr p = make_ptr(), q = make_ptr();
+            root_guard g1(p), g2(q);
+            p = read(iport);
+            if (eq(p, gen_eof())) break;
+            q = eval(p, &env);
+            if (!filep) {
+                print(q, oport);
+                cout << endl;
+            }
+        }
+        if (filep) {
+            st.close();
+        } else {
+            cout << endl;
+        }
     }
-    cout << endl;
 }
