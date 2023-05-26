@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <functional>
 #include <iostream>
 #include <list>
 #include <vector>
@@ -84,7 +86,7 @@ vector<bool> mark;
 list<long long> freel, allocl;
 list<ptr *> rootl;
 
-long long memory_size = 6;
+long long memory_size = 16;
 
 struct root_guard {
     explicit root_guard(ptr &p) { rootl.push_front(&p); }
@@ -266,6 +268,7 @@ bool eq(ptr p, ptr q) {
 }
 
 ptr read(ptr &port) {
+read_start:
     if (port.type != TIPORT) ERR_EXIT("Read: not an input port");
     int c = port.iport->get();
     while (isspace(c)) c = port.iport->get();
@@ -283,6 +286,12 @@ ptr read(ptr &port) {
         ERR_EXIT("Read: unexpected object");
     } else if (c == '.') {
         ERR_EXIT("Read: unexpected dot");
+    } else if (c == ';') {
+        while (c != '\n' && c != EOF) {
+            c = port.iport->get();
+        }
+        port.iport->unget();
+        goto read_start;
     } else if (c == '\'') {
         ptr quote = intern("quote"), text = make_ptr(), ccdr = make_ptr();
         root_guard g1(quote), g2(text), g3(ccdr);
@@ -443,6 +452,78 @@ ptr make_frame(ptr formals, ptr args) {
     return cons(q, p);
 }
 
+ptr cons_prim(ptr args) { return cons(get_car(args), get_car(get_cdr(args))); }
+ptr consp_prim(ptr args) {
+    return get_car(args).type == TCONS ? intern("t") : intern("nil");
+}
+ptr plus_prim(ptr args) {
+    long double sum = 0;
+    while (!eq(args, intern("nil"))) {
+        auto c = get_car(args);
+        if (c.type != TNUM) ERR_EXIT("+: not a number");
+        sum += c.number;
+        args = get_cdr(args);
+    }
+    return make_number(sum);
+}
+ptr times_prim(ptr args) {
+    long double prod = 1;
+    while (!eq(args, intern("nil"))) {
+        auto c = get_car(args);
+        if (c.type != TNUM) ERR_EXIT("*: not a number");
+        prod *= c.number;
+        args = get_cdr(args);
+    }
+    return make_number(prod);
+}
+ptr minus_prim(ptr args) {
+    if (get_car(args).type != TNUM) ERR_EXIT("-: expected number");
+    long double diff = get_car(args).number;
+    args = get_cdr(args);
+    bool flag = false;
+    while (!eq(args, intern("nil"))) {
+        auto c = get_car(args);
+        if (c.type != TNUM) ERR_EXIT("-: not a number");
+        diff -= c.number;
+        args = get_cdr(args);
+        flag = true;
+    }
+    if (!flag) diff *= -1;
+    return make_number(diff);
+}
+ptr divide_prim(ptr args) {
+    if (get_car(args).type != TNUM) ERR_EXIT("/: expected number");
+    long double quotient = get_car(args).number;
+    args = get_cdr(args);
+    bool flag = false;
+    while (!eq(args, intern("nil"))) {
+        auto c = get_car(args);
+        if (c.type != TNUM) ERR_EXIT("/: not a number");
+        quotient /= c.number;
+        args = get_cdr(args);
+        flag = true;
+    }
+    if (!flag) quotient = 1 / quotient;
+    return make_number(quotient);
+}
+ptr equal_prim(ptr args) {
+    if (!eq(args, intern("nil"))) {
+        for (auto p = args; !eq(get_cdr(p), intern("nil")); p = get_cdr(p)) {
+            if (get_car(p).type != TNUM || get_car(get_cdr(p)).type != TNUM)
+                ERR_EXIT("=: expected number");
+            if (abs(get_car(p).number - get_car(get_cdr(p)).number) > 1e-8) {
+                return intern("nil");
+            }
+        }
+    }
+    return intern("t");
+}
+
+vector<function<ptr(ptr)>> primitives{cons_prim,  consp_prim, plus_prim,
+                                      times_prim, minus_prim, divide_prim,
+                                      equal_prim};
+vector<string> primitive_names{"cons", "consp", "+", "*", "-", "/", "="};
+
 ptr eval(ptr expr, ptr *env) {
 eval_start:
     root_guard g1(expr), g2(*env);
@@ -517,7 +598,7 @@ eval_start:
     } else if (p.type == TPRIM) {
         args = evlis(get_cdr(expr), *env);
         // apply
-        // TODO
+        return primitives[p.index](args);
     } else if (p.type == TMACRO) {
         args = get_cdr(expr);
         // apply and eval
@@ -531,7 +612,6 @@ eval_start:
             eval(get_car(body), &newenv);
             body = get_cdr(body);
         }
-        // special handling for last clause in lambda
         expr = get_car(body);
         env = &newenv;
         expr = eval(expr, env);
@@ -540,9 +620,27 @@ eval_start:
     ERR_EXIT("Eval: unknown expression type");
 }
 
-ptr initial_environment() {
-    return cons(intern("nil"), intern("nil"), TENV);
-    // TODO
+ptr make_primitive(long long index) {
+    ptr p;
+    p.type = TPRIM;
+    p.index = index;
+    return p;
+}
+
+ptr initial_environment() { return cons(intern("nil"), intern("nil"), TENV); }
+
+void populate_primitives(ptr &env) {
+    if (primitives.size() != primitive_names.size())
+        ERR_EXIT("Invalid primitive table");
+    for (int i = 0; i < (int)primitives.size(); i++) {
+        auto p = make_ptr(), pair = make_ptr(), lst = make_ptr();
+        root_guard g1(pair), g2(lst), g3(p);
+        pair = cons(intern(primitive_names[i].c_str()), make_unbound());
+        lst = cons(pair, get_car(env));
+        get_car(env) = lst;
+        p = lookup(env, intern(primitive_names[i].c_str()));
+        get_cdr(p) = make_primitive(i);
+    }
 }
 
 int main(int argc, char **argv) {
@@ -560,7 +658,7 @@ int main(int argc, char **argv) {
         } else {
             iport = make_input_port(&cin);
         }
-    while (true) {
+        while (true) {
             if (!filep) cout << "> " << flush;
             ptr p = make_ptr(), q = make_ptr();
             root_guard g1(p), g2(q);
