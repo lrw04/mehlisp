@@ -420,13 +420,13 @@ ptr procedure_formals(ptr f) { return get_car(get_cdr(f)); }
 ptr procedure_body(ptr f) { return get_cdr(get_cdr(f)); }
 ptr procedure_env(ptr f) { return get_car(f); }
 
-ptr eval(ptr expr, ptr *env);
+ptr eval(ptr expr, ptr env);
 
-ptr evlis(ptr args, ptr &env) {
+ptr evlis(ptr args, ptr env) {
     if (eq(args, intern("nil"))) return intern("nil");
     ptr p = make_ptr(), q = make_ptr();
     root_guard g1(p), g2(q);
-    p = eval(get_car(args), &env);
+    p = eval(get_car(args), env);
     q = evlis(get_cdr(args), env);
     return cons(p, q);
 }
@@ -524,13 +524,13 @@ vector<function<ptr(ptr)>> primitives{cons_prim,  consp_prim, plus_prim,
                                       equal_prim};
 vector<string> primitive_names{"cons", "consp", "+", "*", "-", "/", "="};
 
-ptr eval(ptr expr, ptr *env) {
+ptr eval(ptr expr, ptr env) {
 eval_start:
-    root_guard g1(expr), g2(*env);
+    root_guard g1(expr), g2(env);
     if (expr.type != TCONS) {
         if (expr.type == TSYM) {
             if (eq(expr, intern("nil")) || eq(expr, intern("t"))) return expr;
-            auto p = lookup(*env, expr);
+            auto p = lookup(env, expr);
             if (eq(p, make_unbound())) ERR_EXIT("Eval: unbound variable");
             return get_cdr(p);
         }
@@ -585,15 +585,15 @@ eval_start:
         root_guard g1(body), g2(frame), g3(newenv);
         body = procedure_body(p);
         frame = make_frame(procedure_formals(p), args);
-        newenv = cons(frame, *env, TENV);
+        newenv = cons(frame, env, TENV);
         if (eq(body, intern("nil"))) return intern("nil");
         while (!eq(get_cdr(body), intern("nil"))) {
-            eval(get_car(body), &newenv);
+            eval(get_car(body), newenv);
             body = get_cdr(body);
         }
         // special handling for last clause in lambda
         expr = get_car(body);
-        env = &newenv;
+        env = newenv;
         goto eval_start;
     } else if (p.type == TPRIM) {
         args = evlis(get_cdr(expr), *env);
@@ -606,14 +606,14 @@ eval_start:
         root_guard g1(body), g2(frame), g3(newenv);
         body = procedure_body(p);
         frame = make_frame(procedure_formals(p), args);
-        newenv = cons(frame, *env, TENV);
+        newenv = cons(frame, env, TENV);
         if (eq(body, intern("nil"))) return intern("nil");
         while (!eq(get_cdr(body), intern("nil"))) {
-            eval(get_car(body), &newenv);
+            eval(get_car(body), newenv);
             body = get_cdr(body);
         }
         expr = get_car(body);
-        env = &newenv;
+        env = newenv;
         expr = eval(expr, env);
         goto eval_start;
     }
@@ -664,7 +664,7 @@ int main(int argc, char **argv) {
             root_guard g1(p), g2(q);
             p = read(iport);
             if (eq(p, gen_eof())) break;
-            q = eval(p, &env);
+            q = eval(p, env);
             if (!filep) {
                 print(q, oport);
                 cout << endl;
