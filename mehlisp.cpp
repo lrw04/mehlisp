@@ -511,7 +511,7 @@ ptr equal_prim(ptr args) {
         for (auto p = args; !eq(get_cdr(p), intern("nil")); p = get_cdr(p)) {
             if (get_car(p).type != TNUM || get_car(get_cdr(p)).type != TNUM)
                 ERR_EXIT("=: expected number");
-            if (abs(get_car(p).number - get_car(get_cdr(p)).number) > 1e-8) {
+            if (abs(get_car(p).number - get_car(get_cdr(p)).number) > 0) {
                 return intern("nil");
             }
         }
@@ -555,31 +555,34 @@ eval_start:
     if (eq(get_car(expr), intern("set!"))) {
         auto p = make_ptr();
         root_guard g(p);
-        p = lookup(*env, get_car(get_cdr(expr)));
+        p = lookup(env, get_car(get_cdr(expr)));
+        auto val = make_ptr();
+        root_guard gp(val);
+        val = eval(get_car(get_cdr(get_cdr(expr))), env);
         if (eq(p, make_unbound())) {
             auto pair = make_ptr(), lst = make_ptr();
             root_guard g1(pair), g2(lst);
             pair = cons(get_car(get_cdr(expr)), make_unbound());
-            lst = cons(pair, get_car(*env));
-            get_car(*env) = lst;
+            lst = cons(pair, get_car(env));
+            get_car(env) = lst;
         }
-        p = lookup(*env, get_car(get_cdr(expr)));
-        get_cdr(p) = eval(get_car(get_cdr(get_cdr(expr))), env);
+        p = lookup(env, get_car(get_cdr(expr)));
+        get_cdr(p) = val;
         return get_car(get_cdr(expr));
     }
     if (eq(get_car(expr), intern("lambda"))) {
         return make_procedure(get_car(get_cdr(expr)), get_cdr(get_cdr(expr)),
-                              *env, TPROC);
+                              env, TPROC);
     }
     if (eq(get_car(expr), intern("syntax"))) {
         return make_procedure(get_car(get_cdr(expr)), get_cdr(get_cdr(expr)),
-                              *env, TMACRO);
+                              env, TMACRO);
     }
     auto p = make_ptr(), args = make_ptr();
     root_guard gg1(p), gg2(args);
     p = eval(get_car(expr), env);
     if (p.type == TPROC) {
-        args = evlis(get_cdr(expr), *env);
+        args = evlis(get_cdr(expr), env);
         // apply
         auto body = make_ptr(), frame = make_ptr(), newenv = make_ptr();
         root_guard g1(body), g2(frame), g3(newenv);
@@ -596,7 +599,9 @@ eval_start:
         env = newenv;
         goto eval_start;
     } else if (p.type == TPRIM) {
-        args = evlis(get_cdr(expr), *env);
+        args = evlis(get_cdr(expr), env);
+        // TODO: special handling for eval and apply that makes the
+        //       interpreter properly tail recursive
         // apply
         return primitives[p.index](args);
     } else if (p.type == TMACRO) {
