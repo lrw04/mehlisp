@@ -86,7 +86,7 @@ vector<bool> mark;
 list<long long> freel, allocl;
 list<ptr *> rootl;
 
-long long memory_size = 16;
+long long memory_size = 1;
 
 struct root_guard {
     explicit root_guard(ptr &p) { rootl.push_front(&p); }
@@ -123,7 +123,6 @@ void gc_mark(long long u) {
 }
 
 void gc_cycle() {
-    // auto prev = freel.size();
     for (auto p : allocl) mark[p] = false;
     for (auto p : rootl)
         if (effective_cons_p(*p)) gc_mark(p->index);
@@ -135,27 +134,17 @@ void gc_cycle() {
             it = allocl.erase(it);
         }
     }
-    // cerr << "Freed " << freel.size() - prev << " cons cells" << endl;
-    // for (auto i : freel) cerr << i << " ";
-    // cerr << endl;
-    // for (auto i : rootl)
-    //     if (effective_cons_p(*i)) cerr << i->index << " ";
-    // cerr << endl;
 }
 
 long long gc_alloc() {
-    // for (auto i : freel) cerr << i << " ";
-    // cerr << endl;
-    // for (auto i : rootl)
-    //     if (effective_cons_p(*i)) cerr << i->index << " ";
-    // cerr << endl;
-    gc_cycle();
+    // gc_cycle();
     if (freel.empty()) gc_cycle();
     if (freel.empty()) {
         for (auto i = memory_size; i < memory_size * 2; i++) freel.push_back(i);
         memory_size *= 2;
         car.resize(memory_size);
         cdr.resize(memory_size);
+        mark.resize(memory_size);
     }
     auto p = freel.front();
     freel.pop_front();
@@ -172,20 +161,13 @@ ptr make_number(long double num) {
 
 ptr make_ptr() { return make_number(0); }
 
-ptr cons(const ptr &ccar, const ptr &ccdr, type_t type = TCONS) {
+ptr cons(ptr ccar, ptr ccdr, type_t type = TCONS) {
     ptr p;
     p.type = type;
     p.index = gc_alloc();
     car[p.index] = ccar;
     cdr[p.index] = ccdr;
     return p;
-}
-
-void push(ptr &lst, ptr ccar) {
-    auto p = make_ptr();
-    root_guard g(p);
-    p = cons(ccar, lst);
-    lst = p;
 }
 
 ptr gen_eof() {
@@ -518,15 +500,34 @@ ptr equal_prim(ptr args) {
     }
     return intern("t");
 }
+ptr car_prim(ptr args) { return get_car(get_car(args)); }
+ptr cdr_prim(ptr args) { return get_cdr(get_car(args)); }
+ptr null_prim(ptr args) {
+    return eq(get_car(args), intern("nil")) ? intern("t") : intern("nil");
+}
+ptr eq_prim(ptr args) {
+    return eq(get_car(args), get_car(get_cdr(args))) ? intern("t")
+                                                     : intern("nil");
+}
 
-vector<function<ptr(ptr)>> primitives{cons_prim,  consp_prim, plus_prim,
-                                      times_prim, minus_prim, divide_prim,
-                                      equal_prim};
-vector<string> primitive_names{"cons", "consp", "+", "*", "-", "/", "="};
+vector<function<ptr(ptr)>> primitives{
+    cons_prim,  consp_prim,  car_prim,   cdr_prim,  plus_prim, times_prim,
+    minus_prim, divide_prim, equal_prim, null_prim, eq_prim};
+vector<string> primitive_names{"cons", "consp", "car", "cdr",  "+", "*",
+                               "-",    "/",     "=",   "null", "eq"};
 
 ptr eval(ptr expr, ptr env) {
+    // print(expr, eport);
+    // cerr << " ";
+    // print(get_car(env), eport);
+    // cerr << " ";
+    // print(
+    //     eq(get_cdr(env), intern("nil")) ? get_cdr(env) :
+    //     get_car(get_cdr(env)), eport);
+    // cerr << endl;
 eval_start:
     root_guard g1(expr), g2(env);
+    // auto orig_env = env;
     if (expr.type != TCONS) {
         if (expr.type == TSYM) {
             if (eq(expr, intern("nil")) || eq(expr, intern("t"))) return expr;
@@ -588,7 +589,8 @@ eval_start:
         root_guard g1(body), g2(frame), g3(newenv);
         body = procedure_body(p);
         frame = make_frame(procedure_formals(p), args);
-        newenv = cons(frame, env, TENV);
+        newenv = eq(frame, intern("nil")) ? env
+                                          : cons(frame, procedure_env(p), TENV);
         if (eq(body, intern("nil"))) return intern("nil");
         while (!eq(get_cdr(body), intern("nil"))) {
             eval(get_car(body), newenv);
@@ -638,13 +640,11 @@ void populate_primitives(ptr &env) {
     if (primitives.size() != primitive_names.size())
         ERR_EXIT("Invalid primitive table");
     for (int i = 0; i < (int)primitives.size(); i++) {
-        auto p = make_ptr(), pair = make_ptr(), lst = make_ptr();
-        root_guard g1(pair), g2(lst), g3(p);
-        pair = cons(intern(primitive_names[i].c_str()), make_unbound());
+        auto pair = make_ptr(), lst = make_ptr();
+        root_guard g1(pair), g2(lst);
+        pair = cons(intern(primitive_names[i].c_str()), make_primitive(i));
         lst = cons(pair, get_car(env));
         get_car(env) = lst;
-        p = lookup(env, intern(primitive_names[i].c_str()));
-        get_cdr(p) = make_primitive(i);
     }
 }
 
@@ -654,6 +654,7 @@ int main(int argc, char **argv) {
     root_guard g(env);
     env = initial_environment();
     populate_primitives(env);
+    env = cons(intern("nil"), env, TENV);
     for (int i = 1; i < argc; i++) {
         bool filep = strcmp(argv[i], "-");
         ifstream st;

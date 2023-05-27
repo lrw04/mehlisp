@@ -6,7 +6,7 @@ A Lisp dialect worthy of a meh.
 
 Features of mehlisp:
 - Lisp-1
-- Proper tail recursion
+- Somewhat tail recursive
 - Bearable minimum amount of C++ code
 
 Values in mehlisp are the following:
@@ -23,6 +23,6 @@ The list of special forms is the following:
 - syntax
 
 The list of builtin functions:
-- cons, consp
-- +p, -p, *p, /p, div, rem
+- cons, consp, car, cdr, null
+- +, -, *, /, div, rem
 - =p, <p, >p
