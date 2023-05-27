@@ -6,7 +6,7 @@ A Lisp dialect worthy of a meh.
 
 Features of mehlisp:
 - Lisp-1
-- Somewhat tail recursive
+- Properly tail recursive
 - Bearable minimum amount of C++ code
 
 Values in mehlisp are the following:
