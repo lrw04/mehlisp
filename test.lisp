@@ -56,3 +56,13 @@
            (let* ((a 2)
                   (b (+ a 100)))
              b)))
+(newline)
+
+(letrec ((even? (lambda (n) 
+                  (if (= n 0) t (odd? (- n 1)))))
+         (odd? (lambda (n)
+                 (if (= n 0) nil (even? (- n 1))))))
+  (println (even? 12))
+  (println (odd? 12))
+  (println (even? 13))
+  (println (odd? 13)))
