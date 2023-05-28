@@ -98,13 +98,42 @@ bool effective_cons_p(ptr p) {
            p.type == TPROC;
 }
 
+ptr make_input_port(istream *st) {
+    ptr p;
+    p.type = TIPORT;
+    p.iport = st;
+    return p;
+}
+
+ptr make_output_port(ostream *st) {
+    ptr p;
+    p.type = TOPORT;
+    p.oport = st;
+    return p;
+}
+
+ptr read(ptr &);
+void print(const ptr &p, ptr &port);
+
+auto iport = make_input_port(&cin);
+auto oport = make_output_port(&cout);
+auto eport = make_output_port(&cerr);
+
 ptr &get_car(ptr p) {
-    if (!effective_cons_p(p)) ERR_EXIT("Get-car on non-cons");
+    if (!effective_cons_p(p)) {
+        print(p, eport);
+        cerr << ": ";
+        ERR_EXIT("get-car on non-cons");
+    }
     return car[p.index];
 }
 
 ptr &get_cdr(ptr p) {
-    if (!effective_cons_p(p)) ERR_EXIT("Get-cdr on non-cons");
+    if (!effective_cons_p(p)) {
+        print(p, eport);
+        cerr << ": ";
+        ERR_EXIT("get-cdr on non-cons");
+    }
     return cdr[p.index];
 }
 
@@ -170,32 +199,11 @@ ptr cons(ptr ccar, ptr ccdr, type_t type = TCONS) {
     return p;
 }
 
-ptr gen_eof() {
+ptr make_eof() {
     ptr p;
     p.type = TEOF;
     return p;
 }
-
-ptr read(ptr &);
-void print(const ptr &p, ptr &port);
-
-ptr make_input_port(istream *st) {
-    ptr p;
-    p.type = TIPORT;
-    p.iport = st;
-    return p;
-}
-
-ptr make_output_port(ostream *st) {
-    ptr p;
-    p.type = TOPORT;
-    p.oport = st;
-    return p;
-}
-
-auto iport = make_input_port(&cin);
-auto oport = make_output_port(&cout);
-auto eport = make_output_port(&cerr);
 
 ptr read_cdr(ptr &port) {
     if (port.type != TIPORT) ERR_EXIT("Read-cdr: not an input port");
@@ -254,7 +262,7 @@ read_start:
     if (port.type != TIPORT) ERR_EXIT("Read: not an input port");
     int c = port.iport->get();
     while (isspace(c)) c = port.iport->get();
-    if (c == EOF) return gen_eof();
+    if (c == EOF) return make_eof();
 
     if (c == '(') return read_cdr(port);
     if (c == '#') {
@@ -362,7 +370,8 @@ lookup_start:
     auto p = get_car(env);
     for (auto i = p; !eq(i, intern("nil")); i = get_cdr(i)) {
         auto c = get_car(i);
-        if (eq(get_car(c), sym)) return c;
+        if (eq(get_car(c), sym))
+            return eq(get_cdr(c), make_unbound()) ? make_unbound() : c;
     }
     // try parent
     env = get_cdr(env);
@@ -509,30 +518,57 @@ ptr eq_prim(ptr args) {
     return eq(get_car(args), get_car(get_cdr(args))) ? intern("t")
                                                      : intern("nil");
 }
+ptr unbound_prim(ptr args) { return make_unbound(); }
+ptr gensym_prim(ptr args) {
+    static int counter = 0;
+    counter++;
+    string s = "gensym-" + to_string(counter);
+    return intern(s.c_str());
+}
+ptr symbolp_prim(ptr args) {
+    return get_car(args).type == TSYM ? intern("t") : intern("nil");
+}
+ptr display_prim(ptr args) {
+    print(get_car(args), oport);
+    return intern("display");
+}
+ptr newline_prim(ptr args) {
+    (*oport.oport) << endl;
+    return intern("newline");
+}
 
 vector<function<ptr(ptr)>> primitives{
-    cons_prim,  consp_prim,  car_prim,   cdr_prim,  plus_prim, times_prim,
-    minus_prim, divide_prim, equal_prim, null_prim, eq_prim};
-vector<string> primitive_names{"cons", "consp", "car", "cdr",  "+", "*",
-                               "-",    "/",     "=",   "null", "eq"};
+    cons_prim,   consp_prim,   car_prim,     cdr_prim,
+    plus_prim,   times_prim,   minus_prim,   divide_prim,
+    equal_prim,  null_prim,    eq_prim,      unbound_prim,
+    gensym_prim, symbolp_prim, display_prim, newline_prim};
+vector<string> primitive_names{"cons",   "consp",   "car",     "cdr",
+                               "+",      "*",       "-",       "/",
+                               "=",      "null",    "eq",      "unbound",
+                               "gensym", "symbolp", "display", "newline"};
 
 ptr eval(ptr expr, ptr env) {
+eval_start:
+    // print_mem();
     // print(expr, eport);
     // cerr << " ";
-    // print(get_car(env), eport);
-    // cerr << " ";
-    // print(
-    //     eq(get_cdr(env), intern("nil")) ? get_cdr(env) :
-    //     get_car(get_cdr(env)), eport);
-    // cerr << endl;
-eval_start:
+    // for (auto p = env; !eq(p, intern("nil")); p = get_cdr(p)) {
+    //     print(get_car(p), eport);
+    //     cerr << " ";
+    // }
+    // cerr << endl << endl;
     root_guard g1(expr), g2(env);
-    // auto orig_env = env;
+    auto orig_env = env;
+    root_guard g3(orig_env);
     if (expr.type != TCONS) {
         if (expr.type == TSYM) {
             if (eq(expr, intern("nil")) || eq(expr, intern("t"))) return expr;
             auto p = lookup(env, expr);
-            if (eq(p, make_unbound())) ERR_EXIT("Eval: unbound variable");
+            if (eq(p, make_unbound())) {
+                print(expr, eport);
+                cerr << ": ";
+                ERR_EXIT("eval: unbound variable");
+            }
             return get_cdr(p);
         }
         return expr;
@@ -563,7 +599,7 @@ eval_start:
         if (eq(p, make_unbound())) {
             auto pair = make_ptr(), lst = make_ptr();
             root_guard g1(pair), g2(lst);
-            pair = cons(get_car(get_cdr(expr)), make_unbound());
+            pair = cons(get_car(get_cdr(expr)), val);
             lst = cons(pair, get_car(env));
             get_car(env) = lst;
         }
@@ -589,8 +625,7 @@ eval_start:
         root_guard g1(body), g2(frame), g3(newenv);
         body = procedure_body(p);
         frame = make_frame(procedure_formals(p), args);
-        newenv = eq(frame, intern("nil")) ? env
-                                          : cons(frame, procedure_env(p), TENV);
+        newenv = cons(frame, procedure_env(p), TENV);
         if (eq(body, intern("nil"))) return intern("nil");
         while (!eq(get_cdr(body), intern("nil"))) {
             eval(get_car(body), newenv);
@@ -605,7 +640,10 @@ eval_start:
         // TODO: special handling for eval and apply that makes the
         //       interpreter properly tail recursive
         // apply
-        return primitives[p.index](args);
+        auto r = make_ptr();
+        root_guard g(r);
+        r = primitives[p.index](args);
+        return r;
     } else if (p.type == TMACRO) {
         args = get_cdr(expr);
         // apply and eval
@@ -613,7 +651,7 @@ eval_start:
         root_guard g1(body), g2(frame), g3(newenv);
         body = procedure_body(p);
         frame = make_frame(procedure_formals(p), args);
-        newenv = cons(frame, env, TENV);
+        newenv = cons(frame, procedure_env(p), TENV);
         if (eq(body, intern("nil"))) return intern("nil");
         while (!eq(get_cdr(body), intern("nil"))) {
             eval(get_car(body), newenv);
@@ -622,6 +660,7 @@ eval_start:
         expr = get_car(body);
         env = newenv;
         expr = eval(expr, env);
+        env = orig_env;
         goto eval_start;
     }
     ERR_EXIT("Eval: unknown expression type");
@@ -654,7 +693,6 @@ int main(int argc, char **argv) {
     root_guard g(env);
     env = initial_environment();
     populate_primitives(env);
-    env = cons(intern("nil"), env, TENV);
     for (int i = 1; i < argc; i++) {
         bool filep = strcmp(argv[i], "-");
         ifstream st;
@@ -669,7 +707,7 @@ int main(int argc, char **argv) {
             ptr p = make_ptr(), q = make_ptr();
             root_guard g1(p), g2(q);
             p = read(iport);
-            if (eq(p, gen_eof())) break;
+            if (eq(p, make_eof())) break;
             q = eval(p, env);
             if (!filep) {
                 print(q, oport);
