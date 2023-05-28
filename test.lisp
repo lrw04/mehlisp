@@ -1,19 +1,58 @@
 (set! a 2)
 (set! b 3)
-a
-b
-'a
-'b
+(println a)
+(println b)
+(println 'a)
+(println 'b)
+(newline)
+
 (set! a (lambda (x y) x))
 (set! b (lambda (x y) y))
-(a 1 2)
-(b 1 2)
-((lambda () (set! x 1) (set! x 2) x))
-(set! list (lambda x x))
-(list 1 2 3)
+(println (a 1 2))
+(println (b 1 2))
+(println ((lambda () (set! x 1) (set! x 2) x)))
+(newline)
+
+(println (list 1 2 3))
+(newline)
+
 (set! unless (syntax (condition then else)
                (list 'if condition else then)))
 (set! y 0)
-y
-(unless 0 (set! y 1) (set! y 2))
-y
+(println y)
+(unless t (set! y 1) (set! y 2))
+(println y)
+(newline)
+
+(define a 1)
+(println a)
+(newline)
+
+(println (and t t t))
+(println (and t nil t))
+(println (and 1 2 3))
+(println (and))
+(newline)
+
+(println (progn 1 2 3))
+(progn (set! a 2) (set! a 3) a)
+(println (progn (set! c 2) (set! c 3) c))
+(println a)
+(newline)
+
+(println (let ((a 1))
+           (let ((a 2)
+                 (b (+ a 100)))
+             b)))
+(newline)
+
+(println (or nil 1 2))
+(newline)
+
+(println (let* ((a 1) 
+                (b (+ a 1)))
+           b))
+(println (let ((a 1))
+           (let* ((a 2)
+                  (b (+ a 100)))
+             b)))
